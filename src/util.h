@@ -1,0 +1,1 @@
+void float_map_multiply_and_add(float *dst, float *src, int w, int h, float multiplier);
