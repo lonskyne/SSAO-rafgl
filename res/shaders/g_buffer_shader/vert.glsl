@@ -12,7 +12,6 @@ uniform mat4 uni_M;
 uniform mat4 uni_VP;
 
 
-
 void main()
 {
 	vec4 world_position = uni_M * vec4(position, 1.0);	
