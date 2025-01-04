@@ -306,7 +306,7 @@ void rafgl_meshPUN_load_from_OBJ_offset(rafgl_meshPUN_t *m, const char *obj_path
 void rafgl_meshPUN_load_cube(rafgl_meshPUN_t *m, float coord);
 void rafgl_meshPUN_load_terrain_from_heightmap(rafgl_meshPUN_t *m, float w, float h, const char *img_path, float height);
 
-rafgl_framebuffer_simple_t rafgl_framebuffer_simple_create(int w, int h);
+rafgl_framebuffer_simple_t rafgl_framebuffer_simple_create(int w, int h, GLuint internalformat);
 rafgl_framebuffer_multitarget_t rafgl_framebuffer_multitarget_create(int w, int h, int num_attachments);
 
 void rafgl_meshPUN_load_plane(rafgl_meshPUN_t *m, float w, float h, int wtiles, int htiles);
@@ -1433,7 +1433,7 @@ rafgl_framebuffer_multitarget_t rafgl_framebuffer_multitarget_create(int w, int 
 
 }
 
-rafgl_framebuffer_simple_t rafgl_framebuffer_simple_create(int w, int h)
+rafgl_framebuffer_simple_t rafgl_framebuffer_simple_create(int w, int h, GLuint internalformat)
 {
 
     GLuint framebuffer;
@@ -1444,7 +1444,7 @@ rafgl_framebuffer_simple_t rafgl_framebuffer_simple_create(int w, int h)
     GLuint texture_colour_buffer;
     glGenTextures(1, &texture_colour_buffer);
     glBindTexture(GL_TEXTURE_2D, texture_colour_buffer);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, w, h, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+    glTexImage2D(GL_TEXTURE_2D, 0, internalformat, w, h, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glBindTexture(GL_TEXTURE_2D, 0);
