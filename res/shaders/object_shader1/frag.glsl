@@ -1,8 +1,8 @@
 #version 330
 
+in vec3 pass_world_position;
 in vec2 pass_uv;
 in vec3 pass_normal;
-in vec3 pass_world_position;
 
 out vec4 final_colour;
 
@@ -17,8 +17,8 @@ uniform sampler2D g_normal;
 
 void main()
 {
-	vec3 world_position = texture(g_position, pass_uv).rgb;
-	vec3 normal = texture(g_normal, pass_uv).rgb;
+	vec3 world_position = texture(g_position, vec2(gl_FragCoord.x / 1280, gl_FragCoord.y / 720)).rgb;
+	vec3 normal = texture(g_normal, vec2(gl_FragCoord.x / 1280, gl_FragCoord.y / 720)).rgb;
 	
 	vec3 view_vector = normalize(world_position - uni_camera_position);
 	vec3 neg_view_vector = view_vector * (-1);

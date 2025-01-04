@@ -7,7 +7,6 @@ layout (location = 2) in vec3 normal;
 out vec3 pass_normal;
 out vec3 pass_world_position;
 
-
 uniform mat4 uni_M;
 uniform mat4 uni_VP;
 
