@@ -34,35 +34,37 @@ static GLuint uni_visibility_factor;
 static rafgl_meshPUN_t skybox_mesh;
 
 static rafgl_framebuffer_simple_t fbo;
-unsigned int g_buffer;
-unsigned int g_position, g_normal;
+static rafgl_framebuffer_multitarget_t g_buffer;
+//unsigned int g_buffer;
+//unsigned int g_position, g_normal;
 
 
 void main_state_init(GLFWwindow *window, void *args, int width, int height)
 {
-    glGenFramebuffers(1, &g_buffer);
-    glBindFramebuffer(GL_FRAMEBUFFER, g_buffer);
+    g_buffer = rafgl_framebuffer_multitarget_create(width, height, 2);
+    // glGenFramebuffers(1, &g_buffer);
+    glBindFramebuffer(GL_FRAMEBUFFER, g_buffer.fbo_id);
     
-    // - position color buffer
-    //rafgl_texture_init(&g_position);
-    glGenTextures(1, &g_position);
-    glBindTexture(GL_TEXTURE_2D, g_position);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, width, height, 0, GL_RGBA, GL_FLOAT, NULL);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, g_position, 0);
+    // // - position color buffer
+    // //rafgl_texture_init(&g_position);
+    // glGenTextures(1, &g_position);
+    // glBindTexture(GL_TEXTURE_2D, g_position);
+    // glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, width, height, 0, GL_RGBA, GL_FLOAT, NULL);
+    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    // glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, g_position, 0);
     
-    // - normal color buffer
-    //rafgl_texture_init(&g_normal);
-    glGenTextures(1, &g_normal);
-    glBindTexture(GL_TEXTURE_2D, g_normal);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, width, height, 0, GL_RGBA, GL_FLOAT, NULL);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, g_normal, 0);
+    // // - normal color buffer
+    // //rafgl_texture_init(&g_normal);
+    // glGenTextures(1, &g_normal);
+    // glBindTexture(GL_TEXTURE_2D, g_normal);
+    // glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, width, height, 0, GL_RGBA, GL_FLOAT, NULL);
+    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    // glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, g_normal, 0);
 
-    unsigned int attachments[3] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
-    glDrawBuffers(2, attachments);
+     unsigned int attachments[3] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
+     glDrawBuffers(2, attachments);
 
     g_buffer_shader = rafgl_program_create_from_name("g_buffer_shader");
     g_buffer_uni_M = glGetUniformLocation(g_buffer_shader, "uni_M");
@@ -257,10 +259,14 @@ void main_state_update(GLFWwindow *window, float delta_time, rafgl_game_data_t *
 void main_state_render(GLFWwindow *window, void *args)
 {
     // Geometry pass
-    glBindFramebuffer(GL_FRAMEBUFFER, g_buffer);
+    glBindFramebuffer(GL_FRAMEBUFFER, g_buffer.fbo_id);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+    glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+
     glUseProgram(g_buffer_shader);
+
+    glBindTexture(GL_TEXTURE_CUBE_MAP, skybox_tex.tex_id);
 
     glEnableVertexAttribArray(0);
     glEnableVertexAttribArray(1);
@@ -268,8 +274,8 @@ void main_state_render(GLFWwindow *window, void *args)
 
     glBindVertexArray(meshes[selected_mesh].vao_id);
 
-    glUniformMatrix4fv(g_buffer_uni_M, 1, GL_FALSE, (void*) model.m);
-    glUniformMatrix4fv(g_buffer_uni_VP, 1, GL_FALSE, (void*) view_projection.m);
+    glUniformMatrix4fv(object_uni_M[selected_shader], 1, GL_FALSE, (void*) model.m);
+    glUniformMatrix4fv(object_uni_VP[selected_shader], 1, GL_FALSE, (void*) view_projection.m);
 
     glDrawArrays(GL_TRIANGLES, 0, meshes[selected_mesh].vertex_count);
 
@@ -277,7 +283,31 @@ void main_state_render(GLFWwindow *window, void *args)
     glDisableVertexAttribArray(2);
     glDisableVertexAttribArray(1);
     glDisableVertexAttribArray(0);
+
+    glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    // glBindFramebuffer(GL_FRAMEBUFFER, g_buffer);
+    // glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    // glUseProgram(g_buffer_shader);
+
+    // glEnableVertexAttribArray(0);
+    // glEnableVertexAttribArray(1);
+    // glEnableVertexAttribArray(2);
+
+    // glBindVertexArray(meshes[selected_mesh].vao_id);
+
+    // glUniformMatrix4fv(g_buffer_uni_M, 1, GL_FALSE, (void*) model.m);
+    // glUniformMatrix4fv(g_buffer_uni_VP, 1, GL_FALSE, (void*) view_projection.m);
+
+    // glDrawArrays(GL_TRIANGLES, 0, meshes[selected_mesh].vertex_count);
+
+    // glBindVertexArray(0);
+    // glDisableVertexAttribArray(2);
+    // glDisableVertexAttribArray(1);
+    // glDisableVertexAttribArray(0);
+    // glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 
     // // Lighting pass
@@ -337,7 +367,7 @@ void main_state_render(GLFWwindow *window, void *args)
     glDisable(GL_DEPTH_TEST);
 
     rafgl_texture_t tmptex;
-    tmptex.tex_id = g_normal;
+    tmptex.tex_id = g_buffer.tex_ids[1];
     rafgl_texture_show(&tmptex, 1);
     
     glEnable(GL_DEPTH_TEST);
