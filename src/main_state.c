@@ -27,8 +27,8 @@ static int num_meshes;
 
 static rafgl_texture_t skybox_tex;
 
-static GLuint g_buffer_shader, skybox_shader, skybox_shader_cell, ssao_shader;
-static GLuint g_buffer_uni_M, g_buffer_uni_VP, skybox_uni_P, skybox_uni_V, ssao_buffer_uni_P, ssao_buffer_uni_M , ssao_buffer_uni_V;
+static GLuint g_buffer_shader, skybox_shader, skybox_shader_cell, ssao_shader, ssao_blur_shader;
+static GLuint g_buffer_uni_M, g_buffer_uni_VP, skybox_uni_P, skybox_uni_V, ssao_buffer_uni_P, ssao_buffer_uni_M , ssao_buffer_uni_V, ssao_blur_buffer_uni_M, ssao_blur_buffer_uni_VP;
 static GLuint skybox_cell_uni_P, skybox_cell_uni_V;
 
 static GLuint uni_visibility_factor;
@@ -38,11 +38,11 @@ static rafgl_meshPUN_t skybox_mesh;
 static rafgl_framebuffer_simple_t fbo, ssao_buffer, ssao_blur_buffer;
 static rafgl_framebuffer_multitarget_t g_buffer;
 
-GLuint uni_pos_slot, uni_norm_slot;
-GLuint uni_pos_slot_ssao, uni_norm_slot_ssao, uni_noise_slot_ssao;
+GLuint uni_pos_slot, uni_norm_slot, uni_ssao_slot;
+GLuint uni_pos_slot_ssao, uni_norm_slot_ssao, uni_noise_slot_ssao, uni_tex_slot_blur;
 
 
-unsigned int noise_texture; 
+unsigned int noise_texture, off_ssao = 0, off_ssao_loc; 
 
 
 void main_state_init(GLFWwindow *window, void *args, int width, int height)
@@ -65,7 +65,14 @@ void main_state_init(GLFWwindow *window, void *args, int width, int height)
 
     // SSAO blur buffer setup
     ssao_blur_buffer = rafgl_framebuffer_simple_create(width, height, GL_RGB);
+    ssao_blur_shader = rafgl_program_create_from_name("ssao_blur_shader");
+    uni_tex_slot_blur = glGetUniformLocation(ssao_blur_shader, "tex");
+
+    ssao_blur_buffer_uni_M = glGetUniformLocation(ssao_blur_shader, "uni_M");
+    ssao_blur_buffer_uni_VP = glGetUniformLocation(ssao_blur_shader, "uni_VP");
+
     
+    // Main buffer and skybox setup
     fbo = rafgl_framebuffer_simple_create(width, height, GL_RGB);
 
     rafgl_texture_load_cubemap_named(&skybox_tex, "above_the_sea", "jpg");
@@ -78,9 +85,8 @@ void main_state_init(GLFWwindow *window, void *args, int width, int height)
     skybox_cell_uni_P = glGetUniformLocation(skybox_shader_cell, "uni_P");
     skybox_cell_uni_V = glGetUniformLocation(skybox_shader_cell, "uni_V");
 
-    // Generating sample kernels
+    // Set up ssao shader
     ssao_shader = rafgl_program_create_from_name("ssao_shader");
-    GLfloat sample[KERNEL_SAMPLES * 3];
 
     ssao_buffer_uni_M = glGetUniformLocation(ssao_shader, "uni_M");
     ssao_buffer_uni_P = glGetUniformLocation(ssao_shader, "uni_P");
@@ -89,6 +95,9 @@ void main_state_init(GLFWwindow *window, void *args, int width, int height)
     uni_pos_slot_ssao = glGetUniformLocation(ssao_shader, "g_position");
     uni_norm_slot_ssao = glGetUniformLocation(ssao_shader, "g_normal");
     uni_noise_slot_ssao = glGetUniformLocation(ssao_shader, "noise_tex");
+
+    // Generating sample kernels
+    GLfloat sample[KERNEL_SAMPLES * 3];
 
     for(unsigned int i = 0; i < KERNEL_SAMPLES; i++) {
         sample[i * 3 + 0] = randf() * 2 - 1.0;
@@ -173,9 +182,11 @@ void main_state_init(GLFWwindow *window, void *args, int width, int height)
         object_uni_light_direction[i] = glGetUniformLocation(object_shader[i], "uni_light_direction");
         object_uni_ambient[i] = glGetUniformLocation(object_shader[i], "uni_ambient");
         object_uni_camera_position[i] = glGetUniformLocation(object_shader[i], "uni_camera_position");
+        off_ssao_loc = glGetUniformLocation(object_shader[i], "off_ssao");
 
         uni_pos_slot = glGetUniformLocation(object_shader[i], "g_position");
         uni_norm_slot = glGetUniformLocation(object_shader[i], "g_normal");
+        uni_ssao_slot = glGetUniformLocation(object_shader[i], "ssao_tex");
     }
 
 
@@ -227,6 +238,8 @@ int selected_shader = 0;
 float visibility_factor = -2.0f;
 float turn = 1.0f;
 
+int num_key_down = 0;
+
 void main_state_update(GLFWwindow *window, float delta_time, rafgl_game_data_t *game_data, void *args)
 {
     visibility_factor += delta_time * turn;
@@ -235,6 +248,23 @@ void main_state_update(GLFWwindow *window, float delta_time, rafgl_game_data_t *
 
     time += delta_time;
     model_angle += delta_time * rotate;
+
+    if(game_data->keys_down[RAFGL_KEY_0])
+        num_key_down = 0;
+    else if(game_data->keys_down[RAFGL_KEY_1])
+        num_key_down = 1;
+    else if(game_data->keys_down[RAFGL_KEY_2])
+        num_key_down = 2;
+    else if(game_data->keys_down[RAFGL_KEY_3])
+        num_key_down = 3;
+    else if(game_data->keys_down[RAFGL_KEY_4])
+        num_key_down = 4;
+
+    if(game_data->keys_down[RAFGL_KEY_P])
+        off_ssao = 1;
+    else
+        off_ssao = 0;
+
 
 
     if(!game_data->keys_down[RAFGL_KEY_LEFT_SHIFT])
@@ -382,65 +412,105 @@ void main_state_render(GLFWwindow *window, void *args)
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 
-    // // Skybox
-    // glBindFramebuffer(GL_FRAMEBUFFER, fbo.fbo_id);
-    // glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    // Blur SSAO texture
+    glBindFramebuffer(GL_FRAMEBUFFER, ssao_blur_buffer.fbo_id);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    // glDepthMask(GL_FALSE);
+    glUseProgram(ssao_blur_shader);
 
-    // glUseProgram(skybox_shader);
-    // glUniformMatrix4fv(skybox_uni_V, 1, GL_FALSE, (void*) view.m);
-    // glUniformMatrix4fv(skybox_uni_P, 1, GL_FALSE, (void*) projection.m);
+    glUniform1i(uni_tex_slot_blur, 0);
 
-    // glBindVertexArray(skybox_mesh.vao_id);
-    // glBindTexture(GL_TEXTURE_CUBE_MAP, skybox_tex.tex_id);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, ssao_buffer.tex_id);
+    glGenerateMipmap(GL_TEXTURE_2D);
 
-    // glDrawArrays(GL_TRIANGLES, 0, skybox_mesh.vertex_count);
-    // glDepthMask(GL_TRUE);
+    glBindVertexArray(meshes[selected_mesh].vao_id);
 
-    // glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+    glUniformMatrix4fv(ssao_blur_buffer_uni_M, 1, GL_FALSE, (void*) model.m);
+    glUniformMatrix4fv(ssao_blur_buffer_uni_VP, 1, GL_FALSE, (void*) view_projection.m);
+
+    glDrawArrays(GL_TRIANGLES, 0, meshes[selected_mesh].vertex_count);
+
+    glBindVertexArray(0);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 
-    // // Lightning pass
-    // glUseProgram(object_shader[selected_shader]);
+    // Skybox
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo.fbo_id);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    // glBindTexture(GL_TEXTURE_CUBE_MAP, skybox_tex.tex_id);
+    glDepthMask(GL_FALSE);
 
-    // glUniform1i(uni_pos_slot, 0);
-    // glUniform1i(uni_norm_slot, 1);
+    glUseProgram(skybox_shader);
+    glUniformMatrix4fv(skybox_uni_V, 1, GL_FALSE, (void*) view.m);
+    glUniformMatrix4fv(skybox_uni_P, 1, GL_FALSE, (void*) projection.m);
 
-    // // Position texture
-    // glActiveTexture(GL_TEXTURE0);
-    // glBindTexture(GL_TEXTURE_2D, g_buffer.tex_ids[0]);
-    // glGenerateMipmap(GL_TEXTURE_2D);
-    // // Normal texture
-    // glActiveTexture(GL_TEXTURE1);
-    // glBindTexture(GL_TEXTURE_2D, g_buffer.tex_ids[1]);
-    // glGenerateMipmap(GL_TEXTURE_2D);
+    glBindVertexArray(skybox_mesh.vao_id);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, skybox_tex.tex_id);
 
-    // glBindVertexArray(meshes[selected_mesh].vao_id);
+    glDrawArrays(GL_TRIANGLES, 0, skybox_mesh.vertex_count);
+    glDepthMask(GL_TRUE);
 
-    // glUniformMatrix4fv(object_uni_M[selected_shader], 1, GL_FALSE, (void*) model.m);
-    // glUniformMatrix4fv(object_uni_VP[selected_shader], 1, GL_FALSE, (void*) view_projection.m);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
 
-    // glUniform3f(object_uni_object_colour[selected_shader], object_colour.x, object_colour.y, object_colour.z);
-    // glUniform3f(object_uni_light_colour[selected_shader], light_colour.x, light_colour.y, light_colour.z);
-    // glUniform3f(object_uni_light_direction[selected_shader], light_direction.x, light_direction.y, light_direction.z);
-    // glUniform3f(object_uni_ambient[selected_shader], ambient.x, ambient.y, ambient.z);
-    // glUniform3f(object_uni_camera_position[selected_shader], camera_position.x, camera_position.y, camera_position.z);
 
-    // glDrawArrays(GL_TRIANGLES, 0, meshes[selected_mesh].vertex_count);
+    // Lightning pass
+    glUseProgram(object_shader[selected_shader]);
 
-    // glBindVertexArray(0);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, skybox_tex.tex_id);
 
-    // glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+    glUniform1i(uni_pos_slot, 0);
+    glUniform1i(uni_norm_slot, 1);
+    glUniform1i(uni_ssao_slot, 2);
 
-    // glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    // Position texture
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, g_buffer.tex_ids[0]);
+    glGenerateMipmap(GL_TEXTURE_2D);
+    // Normal texture
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, g_buffer.tex_ids[1]);
+    glGenerateMipmap(GL_TEXTURE_2D);
+    // SSAO texture
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, ssao_blur_buffer.tex_id);
+    glGenerateMipmap(GL_TEXTURE_2D);
+
+    glBindVertexArray(meshes[selected_mesh].vao_id);
+
+    glUniformMatrix4fv(object_uni_M[selected_shader], 1, GL_FALSE, (void*) model.m);
+    glUniformMatrix4fv(object_uni_VP[selected_shader], 1, GL_FALSE, (void*) view_projection.m);
+
+    glUniform3f(object_uni_object_colour[selected_shader], object_colour.x, object_colour.y, object_colour.z);
+    glUniform3f(object_uni_light_colour[selected_shader], light_colour.x, light_colour.y, light_colour.z);
+    glUniform3f(object_uni_light_direction[selected_shader], light_direction.x, light_direction.y, light_direction.z);
+    glUniform3f(object_uni_ambient[selected_shader], ambient.x, ambient.y, ambient.z);
+    glUniform3f(object_uni_camera_position[selected_shader], camera_position.x, camera_position.y, camera_position.z);
+    glUniform1i(off_ssao_loc, off_ssao);
+
+    glDrawArrays(GL_TRIANGLES, 0, meshes[selected_mesh].vertex_count);
+
+    glBindVertexArray(0);
+
+    glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     glDisable(GL_DEPTH_TEST);
 
     rafgl_texture_t tmptex;
-    tmptex.tex_id = ssao_buffer.tex_id;
+
+    if(num_key_down == 1)
+        tmptex.tex_id = g_buffer.tex_ids[0];
+    else if(num_key_down == 2)
+        tmptex.tex_id = g_buffer.tex_ids[1];
+    else if(num_key_down == 3)
+        tmptex.tex_id = ssao_buffer.tex_id;
+    else if(num_key_down == 4)
+        tmptex.tex_id = ssao_blur_buffer.tex_id;
+    else
+        tmptex.tex_id = fbo.tex_id;
+
     rafgl_texture_show(&tmptex, 1);
     
     glEnable(GL_DEPTH_TEST);
@@ -450,5 +520,10 @@ void main_state_render(GLFWwindow *window, void *args)
 
 void main_state_cleanup(GLFWwindow *window, void *args)
 {
-    //glDeleteShader(object_shader);
+    glDeleteShader(ssao_shader);
+    glDeleteShader(ssao_blur_shader);
+    glDeleteShader(g_buffer_shader);
+    glDeleteShader(skybox_shader);
+    glDeleteShader(skybox_shader_cell);
+    glDeleteShader(object_shader[0]);
 }
