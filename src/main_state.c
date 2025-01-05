@@ -28,7 +28,7 @@ static int num_meshes;
 static rafgl_texture_t skybox_tex;
 
 static GLuint g_buffer_shader, skybox_shader, skybox_shader_cell, ssao_shader;
-static GLuint g_buffer_uni_M, g_buffer_uni_VP, skybox_uni_P, skybox_uni_V, ssao_buffer_uni_P;
+static GLuint g_buffer_uni_M, g_buffer_uni_VP, skybox_uni_P, skybox_uni_V, ssao_buffer_uni_P, ssao_buffer_uni_M , ssao_buffer_uni_V;
 static GLuint skybox_cell_uni_P, skybox_cell_uni_V;
 
 static GLuint uni_visibility_factor;
@@ -59,10 +59,12 @@ void main_state_init(GLFWwindow *window, void *args, int width, int height)
     g_buffer_uni_VP = glGetUniformLocation(g_buffer_shader, "uni_VP");
 
     // SSAO buffer setup
-    ssao_buffer = rafgl_framebuffer_simple_create(width, height, GL_RED);
+    ssao_buffer = rafgl_framebuffer_simple_create(width, height, GL_RGB);
+    glBindFramebuffer(GL_FRAMEBUFFER, ssao_buffer.fbo_id);
+    glDrawBuffer(GL_COLOR_ATTACHMENT0);
 
     // SSAO blur buffer setup
-    ssao_blur_buffer = rafgl_framebuffer_simple_create(width, height, GL_RED);
+    ssao_blur_buffer = rafgl_framebuffer_simple_create(width, height, GL_RGB);
     
     fbo = rafgl_framebuffer_simple_create(width, height, GL_RGB);
 
@@ -80,7 +82,9 @@ void main_state_init(GLFWwindow *window, void *args, int width, int height)
     ssao_shader = rafgl_program_create_from_name("ssao_shader");
     GLfloat sample[KERNEL_SAMPLES * 3];
 
+    ssao_buffer_uni_M = glGetUniformLocation(ssao_shader, "uni_M");
     ssao_buffer_uni_P = glGetUniformLocation(ssao_shader, "uni_P");
+    ssao_buffer_uni_V = glGetUniformLocation(ssao_shader, "uni_V");
 
     uni_pos_slot_ssao = glGetUniformLocation(ssao_shader, "g_position");
     uni_norm_slot_ssao = glGetUniformLocation(ssao_shader, "g_normal");
@@ -119,17 +123,21 @@ void main_state_init(GLFWwindow *window, void *args, int width, int height)
 
 
     // Generate random rotation texture
-    GLfloat ssao_noise[4 * 4 * 3];
-    for (unsigned int i = 0; i < 16; i++)
+    GLfloat ssao_noise[4][4][3];
+
+    for (unsigned int i = 0; i < 4; i++)
     {
-        ssao_noise[3 * i + 0] = randf() * 2 - 1.0;
-        ssao_noise[3 * i + 1] = randf() * 2 - 1.0;
-        ssao_noise[3 * i + 2] = 0.0;
+        for (unsigned int j = 0; j < 4; j++)
+        {
+            ssao_noise[i][j][0] = randf() * 2 + 1;
+            ssao_noise[i][j][1] = randf() * 2 + 1;
+            ssao_noise[i][j][2] = 0.0;
+        }
     }
 
     glGenTextures(1, &noise_texture);
     glBindTexture(GL_TEXTURE_2D, noise_texture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, 4, 4, 0, GL_RGB, GL_FLOAT, &ssao_noise[0]);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, 4, 4, 0, GL_RGB, GL_FLOAT, ssao_noise);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
@@ -363,74 +371,76 @@ void main_state_render(GLFWwindow *window, void *args)
 
     glBindVertexArray(meshes[selected_mesh].vao_id);
 
+    glUniformMatrix4fv(ssao_buffer_uni_M, 1, GL_FALSE, (void*) model.m);
     glUniformMatrix4fv(ssao_buffer_uni_P, 1, GL_FALSE, (void*) projection.m);
+    glUniformMatrix4fv(ssao_buffer_uni_V, 1, GL_FALSE, (void*) view.m);
+
 
     glDrawArrays(GL_TRIANGLES, 0, meshes[selected_mesh].vertex_count);
 
     glBindVertexArray(0);
-    glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 
-    // Skybox
-    glBindFramebuffer(GL_FRAMEBUFFER, fbo.fbo_id);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    // // Skybox
+    // glBindFramebuffer(GL_FRAMEBUFFER, fbo.fbo_id);
+    // glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    glDepthMask(GL_FALSE);
+    // glDepthMask(GL_FALSE);
 
-    glUseProgram(skybox_shader);
-    glUniformMatrix4fv(skybox_uni_V, 1, GL_FALSE, (void*) view.m);
-    glUniformMatrix4fv(skybox_uni_P, 1, GL_FALSE, (void*) projection.m);
+    // glUseProgram(skybox_shader);
+    // glUniformMatrix4fv(skybox_uni_V, 1, GL_FALSE, (void*) view.m);
+    // glUniformMatrix4fv(skybox_uni_P, 1, GL_FALSE, (void*) projection.m);
 
-    glBindVertexArray(skybox_mesh.vao_id);
-    glBindTexture(GL_TEXTURE_CUBE_MAP, skybox_tex.tex_id);
+    // glBindVertexArray(skybox_mesh.vao_id);
+    // glBindTexture(GL_TEXTURE_CUBE_MAP, skybox_tex.tex_id);
 
-    glDrawArrays(GL_TRIANGLES, 0, skybox_mesh.vertex_count);
-    glDepthMask(GL_TRUE);
+    // glDrawArrays(GL_TRIANGLES, 0, skybox_mesh.vertex_count);
+    // glDepthMask(GL_TRUE);
 
-    glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+    // glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
 
 
-    // Lightning pass
-    glUseProgram(object_shader[selected_shader]);
+    // // Lightning pass
+    // glUseProgram(object_shader[selected_shader]);
 
-    glBindTexture(GL_TEXTURE_CUBE_MAP, skybox_tex.tex_id);
+    // glBindTexture(GL_TEXTURE_CUBE_MAP, skybox_tex.tex_id);
 
-    glUniform1i(uni_pos_slot, 0);
-    glUniform1i(uni_norm_slot, 1);
+    // glUniform1i(uni_pos_slot, 0);
+    // glUniform1i(uni_norm_slot, 1);
 
-    // Position texture
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, g_buffer.tex_ids[0]);
-    glGenerateMipmap(GL_TEXTURE_2D);
-    // Normal texture
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, g_buffer.tex_ids[1]);
-    glGenerateMipmap(GL_TEXTURE_2D);
+    // // Position texture
+    // glActiveTexture(GL_TEXTURE0);
+    // glBindTexture(GL_TEXTURE_2D, g_buffer.tex_ids[0]);
+    // glGenerateMipmap(GL_TEXTURE_2D);
+    // // Normal texture
+    // glActiveTexture(GL_TEXTURE1);
+    // glBindTexture(GL_TEXTURE_2D, g_buffer.tex_ids[1]);
+    // glGenerateMipmap(GL_TEXTURE_2D);
 
-    glBindVertexArray(meshes[selected_mesh].vao_id);
+    // glBindVertexArray(meshes[selected_mesh].vao_id);
 
-    glUniformMatrix4fv(object_uni_M[selected_shader], 1, GL_FALSE, (void*) model.m);
-    glUniformMatrix4fv(object_uni_VP[selected_shader], 1, GL_FALSE, (void*) view_projection.m);
+    // glUniformMatrix4fv(object_uni_M[selected_shader], 1, GL_FALSE, (void*) model.m);
+    // glUniformMatrix4fv(object_uni_VP[selected_shader], 1, GL_FALSE, (void*) view_projection.m);
 
-    glUniform3f(object_uni_object_colour[selected_shader], object_colour.x, object_colour.y, object_colour.z);
-    glUniform3f(object_uni_light_colour[selected_shader], light_colour.x, light_colour.y, light_colour.z);
-    glUniform3f(object_uni_light_direction[selected_shader], light_direction.x, light_direction.y, light_direction.z);
-    glUniform3f(object_uni_ambient[selected_shader], ambient.x, ambient.y, ambient.z);
-    glUniform3f(object_uni_camera_position[selected_shader], camera_position.x, camera_position.y, camera_position.z);
+    // glUniform3f(object_uni_object_colour[selected_shader], object_colour.x, object_colour.y, object_colour.z);
+    // glUniform3f(object_uni_light_colour[selected_shader], light_colour.x, light_colour.y, light_colour.z);
+    // glUniform3f(object_uni_light_direction[selected_shader], light_direction.x, light_direction.y, light_direction.z);
+    // glUniform3f(object_uni_ambient[selected_shader], ambient.x, ambient.y, ambient.z);
+    // glUniform3f(object_uni_camera_position[selected_shader], camera_position.x, camera_position.y, camera_position.z);
 
-    glDrawArrays(GL_TRIANGLES, 0, meshes[selected_mesh].vertex_count);
+    // glDrawArrays(GL_TRIANGLES, 0, meshes[selected_mesh].vertex_count);
 
-    glBindVertexArray(0);
+    // glBindVertexArray(0);
 
-    glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+    // glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
 
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    // glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     glDisable(GL_DEPTH_TEST);
 
     rafgl_texture_t tmptex;
-    tmptex.tex_id = fbo.tex_id;
+    tmptex.tex_id = ssao_buffer.tex_id;
     rafgl_texture_show(&tmptex, 1);
     
     glEnable(GL_DEPTH_TEST);
