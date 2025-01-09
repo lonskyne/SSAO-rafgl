@@ -13,6 +13,8 @@ uniform vec3 uni_ambient;
 uniform vec3 uni_camera_position;
 
 uniform int off_ssao;
+uniform int sc_width;
+uniform int sc_height;
 
 uniform sampler2D g_position;
 uniform sampler2D g_normal;
@@ -20,9 +22,9 @@ uniform sampler2D ssao_tex;
 
 void main()
 {
-	vec3 world_position = texture(g_position, vec2(gl_FragCoord.x / 1280, gl_FragCoord.y / 720)).rgb;
-	vec3 normal = texture(g_normal, vec2(gl_FragCoord.x / 1280, gl_FragCoord.y / 720)).rgb;
-	vec3 ssao_val = texture(ssao_tex, vec2(gl_FragCoord.x / 1280, gl_FragCoord.y / 720)).rgb * 0.3;
+	vec3 world_position = texture(g_position, vec2(gl_FragCoord.x / sc_width, gl_FragCoord.y / sc_height)).rgb;
+	vec3 normal = texture(g_normal, vec2(gl_FragCoord.x / sc_width, gl_FragCoord.y / sc_height)).rgb;
+	vec3 ssao_val = texture(ssao_tex, vec2(gl_FragCoord.x / sc_width, gl_FragCoord.y / sc_height)).rgb * 0.3;
 
 	if(off_ssao == 1)
 		ssao_val = uni_ambient;

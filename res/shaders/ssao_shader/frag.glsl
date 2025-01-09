@@ -12,13 +12,17 @@ uniform mat4 uni_M;
 uniform mat4 uni_P;
 uniform mat4 uni_V;
 
-const vec2 noise_scale = vec2(1280.0/4.0, 720.0/4.0);
+uniform int sc_width;
+uniform int sc_height;
+
 const float radius = 0.5;
 const float bias = 0.025;
 
 void main()
 {
-	vec2 tex_coords = vec2(gl_FragCoord.x / 1280, gl_FragCoord.y / 720);
+	vec2 noise_scale = vec2(sc_width/4.0, sc_height/4.0);
+
+	vec2 tex_coords = vec2(gl_FragCoord.x / sc_width, gl_FragCoord.y / sc_height);
 
 	vec3 world_position = texture(g_position, tex_coords).xyz;
 	vec3 view_position = (uni_V * vec4(world_position, 1.0)).xyz;

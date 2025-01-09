@@ -42,11 +42,16 @@ GLuint uni_pos_slot, uni_norm_slot, uni_ssao_slot;
 GLuint uni_pos_slot_ssao, uni_norm_slot_ssao, uni_noise_slot_ssao, uni_tex_slot_blur;
 
 
-unsigned int noise_texture, off_ssao = 0, off_ssao_loc; 
+unsigned int noise_texture, off_ssao = 0, off_ssao_loc;
+unsigned int scw_obj0, sch_obj0, scw_blur, sch_blur, scw_ssao, sch_ssao;
+unsigned int screenW, screenH;
 
 
 void main_state_init(GLFWwindow *window, void *args, int width, int height)
 {
+    screenW = width;
+    screenH = height;
+
     // G Buffer setup
     g_buffer = rafgl_framebuffer_multitarget_create(width, height, 2);
     glBindFramebuffer(GL_FRAMEBUFFER, g_buffer.fbo_id);
@@ -70,6 +75,9 @@ void main_state_init(GLFWwindow *window, void *args, int width, int height)
 
     ssao_blur_buffer_uni_M = glGetUniformLocation(ssao_blur_shader, "uni_M");
     ssao_blur_buffer_uni_VP = glGetUniformLocation(ssao_blur_shader, "uni_VP");
+
+    scw_blur = glGetUniformLocation(ssao_blur_shader, "sc_width");
+    sch_blur = glGetUniformLocation(ssao_blur_shader, "sc_height");
 
     
     // Main buffer and skybox setup
@@ -95,6 +103,9 @@ void main_state_init(GLFWwindow *window, void *args, int width, int height)
     uni_pos_slot_ssao = glGetUniformLocation(ssao_shader, "g_position");
     uni_norm_slot_ssao = glGetUniformLocation(ssao_shader, "g_normal");
     uni_noise_slot_ssao = glGetUniformLocation(ssao_shader, "noise_tex");
+
+    scw_ssao = glGetUniformLocation(ssao_shader, "sc_width");
+    sch_ssao = glGetUniformLocation(ssao_shader, "sc_height");
 
     // Generating sample kernels
     GLfloat sample[KERNEL_SAMPLES * 3];
@@ -129,7 +140,6 @@ void main_state_init(GLFWwindow *window, void *args, int width, int height)
     GLuint vec_loc = glGetUniformLocation(ssao_shader, "samples");
     glUseProgram(ssao_shader);
     glUniform3fv(vec_loc, KERNEL_SAMPLES, sample);
-
 
     // Generate random rotation texture
     GLfloat ssao_noise[4][4][3];
@@ -187,6 +197,9 @@ void main_state_init(GLFWwindow *window, void *args, int width, int height)
         uni_pos_slot = glGetUniformLocation(object_shader[i], "g_position");
         uni_norm_slot = glGetUniformLocation(object_shader[i], "g_normal");
         uni_ssao_slot = glGetUniformLocation(object_shader[i], "ssao_tex");
+
+        scw_obj0 = glGetUniformLocation(object_shader[i], "sc_width");
+        sch_obj0 = glGetUniformLocation(object_shader[i], "sc_height");
     }
 
 
@@ -197,7 +210,6 @@ void main_state_init(GLFWwindow *window, void *args, int width, int height)
 
     //glEnable(GL_CULL_FACE);
     //glCullFace(GL_BACK);
-    
 }
 
 
@@ -386,6 +398,9 @@ void main_state_render(GLFWwindow *window, void *args)
     glUniform1i(uni_norm_slot_ssao, 1);
     glUniform1i(uni_noise_slot_ssao, 2);
 
+    glUniform1i(scw_ssao, screenW);
+    glUniform1i(sch_ssao, screenH);
+
     // Position texture
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, g_buffer.tex_ids[0]);
@@ -419,6 +434,9 @@ void main_state_render(GLFWwindow *window, void *args)
     glUseProgram(ssao_blur_shader);
 
     glUniform1i(uni_tex_slot_blur, 0);
+
+    glUniform1i(scw_blur, screenW);
+    glUniform1i(sch_blur, screenH);
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, ssao_buffer.tex_id);
@@ -462,6 +480,9 @@ void main_state_render(GLFWwindow *window, void *args)
     glUniform1i(uni_pos_slot, 0);
     glUniform1i(uni_norm_slot, 1);
     glUniform1i(uni_ssao_slot, 2);
+
+    glUniform1i(scw_obj0, screenW);
+    glUniform1i(sch_obj0, screenH);
 
     // Position texture
     glActiveTexture(GL_TEXTURE0);
